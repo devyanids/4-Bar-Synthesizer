@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>4 Bar Synthesizer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --app-bg: #0f1219; --nav-bg: #161b26; --box-bg: #1f2636;
+            --font-light: #f8fafc; --font-dim: #94a3b8;
+            --brand-blue: #3b82f6; --brand-blue-hover: #2563eb; 
+            --green-ok: #2dd4bf; --red-warn: #f43f5e; --red-bad: #ef4444;
+            --line-dark: #334155; --line-faded: rgba(255, 255, 255, 0.05);
+        }
+        
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: var(--app-bg); color: var(--font-light); margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        
+        ::-webkit-scrollbar { width: 6px; } 
+        ::-webkit-scrollbar-track { background: var(--nav-bg); }
+        ::-webkit-scrollbar-thumb { background: var(--line-dark); border-radius: 4px; } 
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        .top-bar { background: var(--nav-bg); border-bottom: 1px solid var(--line-dark); padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 10; }
+        .top-bar h2 { margin: 0; font-size: 1.1rem; font-weight: 600; } 
+        .top-bar h2 span { color: var(--brand-blue); }
+        
+        .prompt-badge { font-size: 14px; font-weight: 500; color: var(--brand-blue); background: var(--box-bg); padding: 6px 16px; border-radius: 20px; border: 1px solid var(--line-faded); }
+        
+        .app-layout { display: flex; flex: 1; overflow: hidden; }
+        .panel-side { width: 320px; background: var(--nav-bg); overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; z-index: 5; }
+        #left-col { border-right: 1px solid var(--line-dark); }
+        #right-col { border-left: 1px solid var(--line-dark); }
+        
+        .stage-wrapper { flex: 1; display: flex; justify-content: center; align-items: center; background: radial-gradient(circle at center, #1a2235 0%, #0f1219 100%); position: relative; }
+        .draw-area { position: relative; width: 650px; height: 550px; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); overflow: hidden; }
+        #main-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; touch-action: none; }
+        
+        .info-box { background: var(--box-bg); border: 1px solid var(--line-faded); border-radius: 8px; padding: 16px; }
+        .box-title { font-size: 12px; text-transform: uppercase; font-weight: 700; color: var(--font-dim); letter-spacing: 1px; margin-bottom: 12px; }
+        .mono-text { font-family: Consolas, 'Liberation Mono', monospace; font-size: 13px; color: var(--font-light); line-height: 1.8; }
+        
+        .ctrl-row { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+        .ctrl-row label { font-size: 13px; font-weight: 500; color: var(--font-dim); display: flex; justify-content: space-between; align-items: center; }
+        .ctrl-row label .val-badge { background: var(--app-bg); padding: 2px 8px; border-radius: 4px; color: var(--font-light); font-weight: 600;}
+        
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--brand-blue); cursor: pointer; margin-top: -6px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: var(--line-dark); border-radius: 2px; }
+        
+        .toggle-group { display: flex; flex-direction: column; gap: 12px; }
+        .toggle-opt { display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; }
+        input[type=radio] { appearance: none; background-color: var(--app-bg); margin: 0; width: 1.2em; height: 1.2em; border: 1px solid var(--line-dark); border-radius: 50%; display: grid; place-content: center; cursor: pointer; }
+        input[type=radio]::before { content: ""; width: 0.6em; height: 0.6em; border-radius: 50%; transform: scale(0); box-shadow: inset 1em 1em var(--brand-blue); }
+        input[type=radio]:checked { border-color: var(--brand-blue); } input[type=radio]:checked::before { transform: scale(1); }
+
+        .action-stack { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+        button { padding: 12px; font-family: inherit; font-size: 14px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: 0.2s; background: transparent; }
+        
+        #btn-play { border: 1px solid var(--green-ok); color: var(--green-ok); } 
+        #btn-play:hover:not(:disabled) { background: rgba(45, 212, 191, 0.1); }
+        
+        #btn-calc { border: 1px solid var(--brand-blue); color: var(--brand-blue); } 
+        #btn-calc:hover:not(:disabled) { background: rgba(59, 130, 246, 0.1); }
+        
+        #btn-csv { border: 1px solid #eab308; color: #eab308; }
+        #btn-csv:hover:not(:disabled) { background: rgba(234, 179, 8, 0.1); }
+
+        #btn-laser { border: 1px solid #a855f7; color: #a855f7; }
+        #btn-laser:hover:not(:disabled) { background: rgba(168, 85, 247, 0.1); }
+
+        #btn-clear { border: 1px solid var(--red-bad); color: var(--red-bad); } 
+        #btn-clear:hover { background: rgba(239, 68, 68, 0.1); }
+        
+        button:disabled { border: 1px solid var(--line-dark) !important; color: var(--font-dim) !important; cursor: not-allowed; }
+
+        .raw-stat { padding: 0 16px; font-size: 14px; font-weight: 500; }
+        .kin-row { margin-bottom: 8px; }
+        .kin-row:last-child { margin-bottom: 0; }
+        .v-data { color: var(--brand-blue); font-size: 11px; margin-left: 10px; font-weight: 600;}
+        .dot-legend { display: inline-block; width: 10px; height: 10px; background: #f59e0b; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+        
+        /* Watermark Styles */
+        .student-watermark {
+            position: absolute;
+            bottom: 16px;
+            right: 340px; /* Pushed past the right sidebar */
+            font-size: 12px;
+            color: var(--font-dim);
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            z-index: 100;
+            pointer-events: none;
+            opacity: 0.6;
+            background: rgba(15, 18, 25, 0.5);
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--line-faded);
+        }
+        
+        @media (max-width: 1100px) {
+            .student-watermark { right: 16px; bottom: 16px; }
+        }
+    </style>
+</head>
+<body>
+    
+    <div class="top-bar">
+        <h2>4 Bar <span>Synthesizer</span></h2>
+        <div id="sys-msg" class="prompt-badge">Click 4/5 points to define the path.</div>
+    </div>
+
+    <div class="app-layout">
+        <div class="panel-side" id="left-col">
+            <div class="info-box">
+                <div class="box-title">Synthesis Mode</div>
+                <div class="toggle-group">
+                    <label class="toggle-opt"><input type="radio" name="ptCount" value="4" checked> 4-Point Target Path</label>
+                    <label class="toggle-opt"><input type="radio" name="ptCount" value="5"> 5-Point Target Path</label>
+                </div>
+            </div>
+
+            <div class="action-stack">
+                <button id="btn-calc" disabled>Regenerate</button>
+                <button id="btn-play" disabled>Animate</button>
+                <button id="btn-csv" disabled>Export CAD (CSV)</button>
+                <button id="btn-laser" disabled>Export Laser Cut (SVG)</button>
+                <button id="btn-clear">Reset</button>
+            </div>
+            
+            <div class="info-box">
+                <div class="box-title"><span class="dot-legend"></span> Live Kinematics</div>
+                <div id="telemetry-readout" class="mono-text">
+                    <div class="kin-row">Crank (B): --<br><span class="v-data">↳ V: -- px/s</span></div>
+                    <div class="kin-row">Rocker (A): --<br><span class="v-data">↳ V: -- px/s</span></div>
+                    <div class="kin-row">Coupler (P): --<br><span class="v-data">↳ V: -- px/s</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="stage-wrapper">
+            <div class="draw-area">
+                <canvas id="main-canvas" width="650" height="550"></canvas>
+            </div>
+            <div class="student-watermark">Devyani Singh | Roll No: 240346</div>
+        </div>
+
+        <div class="panel-side" id="right-col">
+            <div class="info-box">
+                <div class="box-title">View Controls</div>
+                <div class="ctrl-row">
+                    <label>Animation Speed <span class="val-badge" id="lbl-rpm">1.0x</span></label>
+                    <input type="range" id="slider-rpm" min="0.1" max="3.0" step="0.1" value="1.0">
+                </div>
+                <div class="ctrl-row" style="margin-bottom: 0;">
+                    <label>Zoom Level <span class="val-badge" id="lbl-zoom">100%</span></label>
+                    <input type="range" id="slider-zoom" min="0.01" max="4" step="0.01" value="1">
+                </div>
+            </div>
+
+            <div class="info-box">
+                <div class="box-title">Target Points</div>
+                <div id="txt-waypoints" class="mono-text">
+                    C1: --<br>C2: --<br>C3: --<br>C4: --<br>C5: --<br><br>HC: --<br>HR: --
+                </div>
+            </div>
+
+            <div class="info-box">
+                <div class="box-title">Linkage Lengths</div>
+                <div id="txt-bars" class="mono-text">
+                    Ground: --<br>Coupler: --<br>Input: --<br>Output: --
+                </div>
+            </div>
+
+            <div id="err-metric" class="raw-stat">
+                Path Error: <span style="color: var(--font-dim); font-style: italic; font-weight: 400;">Awaiting Synthesis...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // OPTIMIZATION ENGINE (Web Worker)
+        // Uses a Differential Evolution routine to solve the Burmester problem
+        // ============================================================================
+        const optEngineCode = `
+        const getDistSq = (x1, y1, x2, y2) => (x2-x1)**2 + (y2-y1)**2;
+        const getDist = (x1, y1, x2, y2) => Math.sqrt(getDistSq(x1,y1,x2,y2));
+
+        function scoreCandidate(dna, w1, w2, w3, w4, w5) {
+            let pG1 = {x: dna[0], y: dna[1]};
+            let pG2 = {x: dna[2], y: dna[3]};
+            let pIn = {x: dna[4], y: dna[5]};
+            let pOut = {x: dna[6], y: dna[7]};
+
+            let lenF = getDist(pG1.x, pG1.y, pG2.x, pG2.y);
+            let lenIn = getDist(pG1.x, pG1.y, pIn.x, pIn.y);
+            let lenOut = getDist(pG2.x, pG2.y, pOut.x, pOut.y);
+            let lenCoup = getDist(pIn.x, pIn.y, pOut.x, pOut.y);
+
+            // Weed out non-physical bounds early
+            if (lenF < 10 || lenIn < 10 || lenOut < 10 || lenCoup < 10) return 1e6;
+            if (lenF > 800 || lenIn > 800 || lenOut > 800 || lenCoup > 800) return 1e6;
+
+            let scorePen = 0;
+            let maxL = Math.max(lenF, lenIn, lenOut, lenCoup);
+            let minL = Math.min(lenF, lenIn, lenOut, lenCoup);
+            let restL = lenF + lenIn + lenOut + lenCoup - maxL - minL;
+            
+            // Grashof check
+            if (minL + maxL >= restL) scorePen += 20000; 
+            else if (minL !== lenIn && minL !== lenF) scorePen += 10000; 
+
+            let extR = getDist(pIn.x, pIn.y, w1.x, w1.y);
+            let extAng = Math.atan2(w1.y - pIn.y, w1.x - pIn.x) - Math.atan2(pOut.y - pIn.y, pOut.x - pIn.x);
+
+            let dX = pG2.x - pIn.x, dY = pG2.y - pIn.y, span = Math.sqrt(dX*dX + dY*dY);
+            if (span > lenCoup + lenOut || span < Math.abs(lenCoup - lenOut)) return 1e6;
+            
+            let alpha = (lenCoup**2 - lenOut**2 + span**2) / (2 * span);
+            let height = Math.sqrt(Math.max(0, lenCoup**2 - alpha**2));
+            let axTest = pIn.x + alpha*(dX/span) - height*(dY/span);
+            let ayTest = pIn.y + alpha*(dY/span) + height*(dX/span);
+            let buildMode = getDist(axTest, ayTest, pOut.x, pOut.y) < 2.0 ? 1 : -1;
+
+            let e2 = Infinity, e3 = Infinity, e4 = Infinity, e5 = Infinity;
+            let healthyTicks = 0;
+
+            // Simulate full rotation
+            for (let deg = 0; deg < 360; deg += 4) {
+                let rad = deg * Math.PI / 180;
+                let curBx = pG1.x + lenIn * Math.cos(rad);
+                let curBy = pG1.y + lenIn * Math.sin(rad);
+                
+                let cx = pG2.x - curBx, cy = pG2.y - curBy, cDist = Math.sqrt(cx*cx + cy*cy);
+                if (cDist > lenCoup + lenOut || cDist < Math.abs(lenCoup - lenOut)) continue;
+                
+                healthyTicks++;
+                let a1 = (lenCoup**2 - lenOut**2 + cDist**2) / (2 * cDist);
+                let h1 = Math.sqrt(Math.max(0, lenCoup**2 - a1**2));
+                let curAx = curBx + a1*(cx/cDist) - buildMode * h1*(cy/cDist);
+                let curAy = curBy + a1*(cy/cDist) + buildMode * h1*(cx/cDist);
+                
+                let baseAng = Math.atan2(curAy - curBy, curAx - curBx);
+                let px = curBx + extR * Math.cos(baseAng + extAng);
+                let py = curBy + extR * Math.sin(baseAng + extAng);
+
+                e2 = Math.min(e2, getDistSq(px, py, w2.x, w2.y));
+                e3 = Math.min(e3, getDistSq(px, py, w3.x, w3.y));
+                e4 = Math.min(e4, getDistSq(px, py, w4.x, w4.y));
+                if (w5) e5 = Math.min(e5, getDistSq(px, py, w5.x, w5.y));
+            }
+
+            if (healthyTicks < 85) scorePen += 15000; 
+
+            let totalErr = Math.sqrt(e2) + Math.sqrt(e3) + Math.sqrt(e4);
+            if (w5) totalErr += Math.sqrt(e5);
+            return totalErr + scorePen;
+        }
+
+        self.onmessage = (msg) => {
+            const { w1, w2, w3, w4, w5 } = msg.data;
+            const hardMode = !!w5;
+            
+            const swarmSize = hardMode ? 200 : 150; 
+            const maxIters = hardMode ? 4000 : 3500;
+            const diffW = 0.8, crossProb = 0.9;
+            
+            let swarm = [];
+            let globalBest = Infinity;
+            let winningDna = null;
+
+            // set bounding box around user targets
+            let bounds = [w1, w2, w3, w4];
+            if(hardMode) bounds.push(w5);
+            
+            let xArr = bounds.map(p => p.x), yArr = bounds.map(p => p.y);
+            let bMinX = Math.min(...xArr) - 300, bMaxX = Math.max(...xArr) + 300;
+            let bMinY = Math.min(...yArr) - 300, bMaxY = Math.max(...yArr) + 300;
+            
+            const randomDrop = () => Math.random() * (bMaxX - bMinX) + bMinX;
+
+            for (let i = 0; i < swarmSize; i++) {
+                let d = [randomDrop(), randomDrop(), randomDrop(), randomDrop(), randomDrop(), randomDrop(), randomDrop(), randomDrop()];
+                let fitness = scoreCandidate(d, w1, w2, w3, w4, w5);
+                swarm.push({ dna: d, score: fitness });
+                if (fitness < globalBest) { globalBest = fitness; winningDna = [...d]; }
+            }
+
+            // The main DE loop
+            for (let generation = 0; generation < maxIters; generation++) {
+                for (let i = 0; i < swarmSize; i++) {
+                    let r1, r2, r3;
+                    do { r1 = Math.floor(Math.random() * swarmSize); } while (r1 === i);
+                    do { r2 = Math.floor(Math.random() * swarmSize); } while (r2 === i || r2 === r1);
+                    do { r3 = Math.floor(Math.random() * swarmSize); } while (r3 === i || r3 === r1 || r3 === r2);
+
+                    let mutant = new Float64Array(8);
+                    const forcedIndex = Math.floor(Math.random() * 8); 
+                    for (let j = 0; j < 8; j++) {
+                        if (Math.random() < crossProb || j === forcedIndex) {
+                            mutant[j] = swarm[r1].dna[j] + diffW * (swarm[r2].dna[j] - swarm[r3].dna[j]);
+                        } else {
+                            mutant[j] = swarm[i].dna[j];
+                        }
+                    }
+
+                    let mutantScore = scoreCandidate(mutant, w1, w2, w3, w4, w5);
+                    if (mutantScore < swarm[i].score) {
+                        swarm[i] = { dna: mutant, score: mutantScore };
+                        if (mutantScore < globalBest) { globalBest = mutantScore; winningDna = [...mutant]; }
+                    }
+                }
+            }
+
+            if (winningDna && globalBest < 10000) {
+                let [gx1, gy1, gx2, gy2, bX, bY, aX, aY] = winningDna;
+                let payload = { 
+                    g1: {x: gx1, y: gy1}, g2: {x: gx2, y: gy2}, 
+                    pB: {x: bX, y: bY}, pA: {x: aX, y: aY}
+                };
+                
+                payload.L_in = getDist(gx1, gy1, bX, bY); 
+                payload.L_out = getDist(gx2, gy2, aX, aY);
+                payload.L_float = getDist(bX, bY, aX, aY); 
+                payload.startAng = Math.atan2(bY - gy1, bX - gx1);
+                
+                payload.extR = getDist(bX, bY, w1.x, w1.y); 
+                payload.extAng = Math.atan2(w1.y - bY, w1.x - bX) - Math.atan2(aY - bY, aX - bX);
+                
+                let dx = gx2 - bX, dy = gy2 - bY, d = Math.sqrt(dx*dx + dy*dy);
+                let alpha = (payload.L_float**2 - payload.L_out**2 + d**2) / (2 * d);
+                let h = Math.sqrt(Math.max(0, payload.L_float**2 - alpha**2));
+                let testAx = bX + alpha*(dx/d) - h*(dy/d); 
+                let testAy = bY + alpha*(dy/d) + h*(dx/d);
+                payload.mode = getDist(testAx, testAy, aX, aY) < 2.0 ? 1 : -1;
+
+                self.postMessage({ result: payload, errVal: globalBest });
+            } else { 
+                self.postMessage({ result: null }); 
+            }
+        };
+        `;
+        
+        const deBlob = new Blob([optEngineCode], {type: 'application/javascript'});
+        const solverThread = new Worker(URL.createObjectURL(deBlob));
+        
+        solverThread.onerror = (err) => {
+            document.getElementById('btn-calc').disabled = false;
+            let msgEl = document.getElementById('sys-msg');
+            msgEl.innerText = "Worker Error: " + err.message;
+            msgEl.style.color = "var(--red-bad)";
+        };
+
+        // ============================================================================
+        // APP STATE & RENDERING
+        // ============================================================================
+        const cvs = document.getElementById('main-canvas');
+        const drawCtx = cvs.getContext('2d');
+        const promptBar = document.getElementById('sys-msg');
+        
+        let requiredPoints = 4; 
+        let userPoints = [];
+        let winningDesign = null;
+        
+        let isSimRunning = false;
+        let activeAngle = 0;
+        let rotationDir = 1;
+        let hits = [true, true, true, true, true]; 
+        
+        let camZoom = 1, camX = 0, camY = 0;
+        let dragActive = false, dragStartX = 0, dragStartY = 0;
+
+        function calcJointPositions(design, theta) {
+            let bx = design.g1.x + design.L_in * Math.cos(theta);
+            let by = design.g1.y + design.L_in * Math.sin(theta);
+            let cx = design.g2.x - bx, cy = design.g2.y - by;
+            let span = Math.sqrt(cx*cx + cy*cy);
+            
+            if (span > design.L_float + design.L_out || span < Math.abs(design.L_float - design.L_out)) return null;
+            
+            let alpha = (design.L_float**2 - design.L_out**2 + span**2) / (2 * span);
+            let h = Math.sqrt(Math.max(0, design.L_float**2 - alpha**2));
+            let ax = bx + alpha*(cx/span) - design.mode * h*(cy/span);
+            let ay = by + alpha*(cy/span) + design.mode * h*(cx/span);
+            
+            let baseAngle = Math.atan2(ay - by, ax - bx);
+            let px = bx + design.extR * Math.cos(baseAngle + design.extAng);
+            let py = by + design.extR * Math.sin(baseAngle + design.extAng);
+            
+            return { ptA: {x: ax, y: ay}, ptB: {x: bx, y: by}, ptP: {x: px, y: py} };
+        }
+
+        function triggerSolver() {
+            if (userPoints.length < requiredPoints) return;
+            const tStart = performance.now();
+            
+            promptBar.innerText = requiredPoints === 5 ? "Running DE (Evolving 800,000 Agents)..." : "Running DE (Evolving 525,000 Agents)...";
+            promptBar.style.color = "var(--brand-blue)";
+            
+            ['btn-calc', 'btn-csv', 'btn-laser'].forEach(id => document.getElementById(id).disabled = true);
+            
+            solverThread.postMessage({ 
+                w1: userPoints[0], w2: userPoints[1], w3: userPoints[2], w4: userPoints[3], 
+                w5: requiredPoints === 5 ? userPoints[4] : null 
+            });
+            
+            solverThread.onmessage = (e) => {
+                const execTime = (performance.now() - tStart).toFixed(0);
+                const { result, errVal } = e.data;
+                
+                if (result) {
+                    winningDesign = result;
+                    activeAngle = winningDesign.startAng;
+                    
+                    ['btn-play', 'btn-csv', 'btn-laser'].forEach(id => document.getElementById(id).disabled = false);
+                    
+                    // Validate point hits for UI colors
+                    hits = userPoints.map((pt) => {
+                        let closest = Infinity;
+                        for (let deg = 0; deg <= 360; deg++) {
+                            let frame = calcJointPositions(winningDesign, deg * Math.PI / 180);
+                            if (frame) {
+                                let gap = Math.hypot(frame.ptP.x - pt.x, frame.ptP.y - pt.y);
+                                if (gap < closest) closest = gap;
+                            }
+                        }
+                        return closest <= 4.0; 
+                    });
+
+                    // Auto-frame the mechanism
+                    let limits = {
+                        minX: Math.min(winningDesign.g1.x, winningDesign.g2.x),
+                        maxX: Math.max(winningDesign.g1.x, winningDesign.g2.x),
+                        minY: Math.min(winningDesign.g1.y, winningDesign.g2.y),
+                        maxY: Math.max(winningDesign.g1.y, winningDesign.g2.y)
+                    };
+
+                    for (let d = 0; d <= 360; d++) {
+                        let f = calcJointPositions(winningDesign, d * Math.PI / 180);
+                        if (f) {
+                            limits.minX = Math.min(limits.minX, f.ptA.x, f.ptB.x, f.ptP.x);
+                            limits.maxX = Math.max(limits.maxX, f.ptA.x, f.ptB.x, f.ptP.x);
+                            limits.minY = Math.min(limits.minY, f.ptA.y, f.ptB.y, f.ptP.y);
+                            limits.maxY = Math.max(limits.maxY, f.ptA.y, f.ptB.y, f.ptP.y);
+                        }
+                    }
+                    
+                    userPoints.forEach(p => {
+                        limits.minX = Math.min(limits.minX, p.x); limits.maxX = Math.max(limits.maxX, p.x);
+                        limits.minY = Math.min(limits.minY, p.y); limits.maxY = Math.max(limits.maxY, p.y);
+                    });
+
+                    const safeMargin = 150; 
+                    const reqScale = Math.min(cvs.width / (limits.maxX - limits.minX + safeMargin), cvs.height / (limits.maxY - limits.minY + safeMargin));
+                    
+                    camZoom = Math.max(0.01, Math.min(reqScale, 4.0)); 
+                    camX = cvs.width / 2 - ((limits.minX + limits.maxX) / 2) * camZoom;
+                    camY = cvs.height / 2 - ((limits.minY + limits.maxY) / 2) * camZoom;
+
+                    document.getElementById('slider-zoom').value = camZoom;
+                    document.getElementById('lbl-zoom').innerText = Math.round(camZoom * 100) + '%';
+                    
+                    const lenFixed = Math.hypot(winningDesign.g1.x - winningDesign.g2.x, winningDesign.g1.y - winningDesign.g2.y);
+                    
+                    document.getElementById('txt-bars').innerHTML = `Ground: <span style="color:var(--font-light);">${lenFixed.toFixed(1)}</span><br>Coupler: <span style="color:var(--font-light);">${winningDesign.L_float.toFixed(1)}</span><br>Input: <span style="color:var(--font-light);">${winningDesign.L_in.toFixed(1)}</span><br>Output: <span style="color:var(--font-light);">${winningDesign.L_out.toFixed(1)}</span>`;
+                    
+                    refreshDataBlocks();
+
+                    promptBar.innerText = `Generation Complete in ${execTime}ms!`;
+                    promptBar.style.color = "var(--green-ok)";
+                    
+                    let errColor = hits.includes(false) ? "var(--red-warn)" : "var(--green-ok)";
+                    document.getElementById('err-metric').innerHTML = `Path Error: <span style="color:${errColor}; font-weight:600;">${errVal.toFixed(2)} px</span>`;
+                } else {
+                    promptBar.innerText = `Evolution Failed to find valid physical mechanism constraints.`;
+                    promptBar.style.color = "var(--red-bad)";
+                }
+                
+                document.getElementById('btn-calc').disabled = false;
+                updateDisplay();
+            };
+        }
+
+        // Setup event listeners for the radio toggles
+        const radios = document.querySelectorAll('input[name="ptCount"]');
+        for(let r of radios) {
+            r.addEventListener('change', (e) => {
+                requiredPoints = parseInt(e.target.value);
+                if (userPoints.length > requiredPoints) {
+                    userPoints.length = requiredPoints; 
+                }
+                
+                refreshDataBlocks();
+                
+                if (userPoints.length === requiredPoints) {
+                    triggerSolver();
+                } else {
+                    promptBar.innerText = `Click ${requiredPoints} points to define the path.`;
+                    promptBar.style.color = "var(--brand-blue)";
+                    winningDesign = null;
+                    
+                    ['btn-calc', 'btn-play', 'btn-csv', 'btn-laser'].forEach(id => document.getElementById(id).disabled = true);
+                    
+                    document.getElementById('telemetry-readout').innerHTML = `
+                        <div class="kin-row">Crank (B): --<br><span class="v-data">↳ V: -- px/s</span></div>
+                        <div class="kin-row">Rocker (A): --<br><span class="v-data">↳ V: -- px/s</span></div>
+                        <div class="kin-row">Coupler (P): --<br><span class="v-data">↳ V: -- px/s</span></div>
+                    `;
+                    updateDisplay();
+                }
+            });
+        }
+
+        function refreshDataBlocks() {
+            let str = "";
+            for(let i=0; i<requiredPoints; i++) {
+                if (userPoints[i]) str += `C${i+1}: (${userPoints[i].x.toFixed(1)}, ${userPoints[i].y.toFixed(1)})<br>`;
+                else str += `C${i+1}: --<br>`;
+            }
+            if(requiredPoints === 4) str += `C5: N/A<br>`;
+            
+            str += "<br>";
+            if (winningDesign) {
+                str += `HC: (${winningDesign.g1.x.toFixed(1)}, ${winningDesign.g1.y.toFixed(1)})<br>`;
+                str += `HR: (${winningDesign.g2.x.toFixed(1)}, ${winningDesign.g2.y.toFixed(1)})`;
+            } else {
+                str += `HC: --<br>HR: --`;
+            }
+            document.getElementById('txt-waypoints').innerHTML = str;
+        }
+
+        function renderBackgroundGrid() {
+            drawCtx.strokeStyle = "rgba(255,255,255,0.05)"; drawCtx.lineWidth = 1 / camZoom; 
+            let minX = -camX / camZoom, maxX = minX + cvs.width / camZoom;
+            let minY = -camY / camZoom, maxY = minY + cvs.height / camZoom;
+            
+            for(let i = Math.floor(minX / 30) * 30; i <= maxX; i += 30) { 
+                drawCtx.beginPath(); drawCtx.moveTo(i, minY); drawCtx.lineTo(i, maxY); drawCtx.stroke(); 
+            }
+            for(let i = Math.floor(minY / 30) * 30; i <= maxY; i += 30) { 
+                drawCtx.beginPath(); drawCtx.moveTo(minX, i); drawCtx.lineTo(maxX, i); drawCtx.stroke(); 
+            }
+        }
+
+        function injectVectorArrow(px, py, vx, vy, hexColor) {
+            const visualScale = 0.5; 
+            const speedMag = Math.hypot(vx, vy) * visualScale;
+            if (speedMag < 2) return; 
+            
+            let tipX = px + vx * visualScale;
+            let tipY = py + vy * visualScale;
+            let theta = Math.atan2(vy, vx);
+
+            drawCtx.beginPath();
+            drawCtx.strokeStyle = hexColor;
+            drawCtx.lineWidth = 2.5 / camZoom;
+            drawCtx.moveTo(px, py);
+            drawCtx.lineTo(tipX, tipY);
+            drawCtx.stroke();
+
+            const head = 10 / camZoom;
+            drawCtx.beginPath();
+            drawCtx.fillStyle = hexColor;
+            drawCtx.moveTo(tipX, tipY);
+            drawCtx.lineTo(tipX - head * Math.cos(theta - Math.PI / 7), tipY - head * Math.sin(theta - Math.PI / 7));
+            drawCtx.lineTo(tipX - head * Math.cos(theta + Math.PI / 7), tipY - head * Math.sin(theta + Math.PI / 7));
+            drawCtx.fill();
+        }
+
+        function updateDisplay() {
+            drawCtx.clearRect(0, 0, cvs.width, cvs.height); 
+            drawCtx.save(); drawCtx.translate(camX, camY); drawCtx.scale(camZoom, camZoom);
+            
+            renderBackgroundGrid();
+
+            for(let i=0; i<userPoints.length; i++) {
+                let p = userPoints[i];
+                drawCtx.fillStyle = (!winningDesign || hits[i]) ? "#2dd4bf" : "#f43f5e"; 
+                drawCtx.beginPath(); drawCtx.arc(p.x, p.y, 4.9 / camZoom, 0, Math.PI*2); drawCtx.fill(); 
+                drawCtx.font = `bold ${12 / camZoom}px sans-serif`; 
+                drawCtx.fillText("C"+(i+1), p.x + (8/camZoom), p.y - (8/camZoom)); 
+            }
+            
+            if (winningDesign) {
+                let drawingTrace = false;
+                drawCtx.beginPath(); drawCtx.strokeStyle = "rgba(56, 189, 248, 0.4)"; drawCtx.lineWidth = 3 / camZoom;
+                
+                for (let d = 0; d <= 360; d++) {
+                    let frame = calcJointPositions(winningDesign, d * Math.PI / 180);
+                    if (frame) { 
+                        if (!drawingTrace) { drawCtx.moveTo(frame.ptP.x, frame.ptP.y); } 
+                        else { drawCtx.lineTo(frame.ptP.x, frame.ptP.y); }
+                        drawingTrace = true;
+                    } else {
+                        drawingTrace = false;
+                    }
+                } 
+                drawCtx.stroke();
+                
+                const curState = calcJointPositions(winningDesign, activeAngle);
+                
+                if (curState) {
+                    // draw mechanism skeleton
+                    drawCtx.strokeStyle = "#334155"; drawCtx.lineWidth = 5 / camZoom; drawCtx.lineCap = "round"; 
+                    drawCtx.beginPath();
+                    drawCtx.moveTo(winningDesign.g1.x, winningDesign.g1.y); 
+                    drawCtx.lineTo(curState.ptB.x, curState.ptB.y); 
+                    drawCtx.lineTo(curState.ptA.x, curState.ptA.y); 
+                    drawCtx.lineTo(winningDesign.g2.x, winningDesign.g2.y); 
+                    drawCtx.stroke();
+                    
+                    // draw coupler plate
+                    drawCtx.fillStyle = "rgba(45, 212, 191, 0.3)"; drawCtx.strokeStyle = "#2dd4bf"; drawCtx.lineWidth = 2 / camZoom;
+                    drawCtx.beginPath(); 
+                    drawCtx.moveTo(curState.ptB.x, curState.ptB.y); 
+                    drawCtx.lineTo(curState.ptA.x, curState.ptA.y); 
+                    drawCtx.lineTo(curState.ptP.x, curState.ptP.y); 
+                    drawCtx.closePath(); drawCtx.fill(); drawCtx.stroke();
+                    
+                    // nodes and labels
+                    let nodes = [
+                        {x: winningDesign.g1.x, y: winningDesign.g1.y, name: "HC"}, 
+                        {x: winningDesign.g2.x, y: winningDesign.g2.y, name: "HR"}, 
+                        {x: curState.ptA.x, y: curState.ptA.y, name: "A"}, 
+                        {x: curState.ptB.x, y: curState.ptB.y, name: "B"}
+                    ];
+                    
+                    nodes.forEach(n => { 
+                        drawCtx.fillStyle = "#1e293b";
+                        drawCtx.beginPath(); drawCtx.arc(n.x, n.y, 4.9 / camZoom, 0, Math.PI*2); drawCtx.fill(); 
+                        
+                        drawCtx.font = `bold ${14 / camZoom}px sans-serif`; 
+                        drawCtx.strokeStyle = "var(--app-bg)"; drawCtx.lineWidth = 3 / camZoom; 
+                        drawCtx.strokeText(n.name, n.x - (18/camZoom), n.y + (22/camZoom)); 
+                        drawCtx.fillStyle = "#f8fafc"; 
+                        drawCtx.fillText(n.name, n.x - (18/camZoom), n.y + (22/camZoom));
+                    });
+                    
+                    // draw trace point
+                    drawCtx.fillStyle = "#3b82f6"; drawCtx.beginPath(); drawCtx.arc(curState.ptP.x, curState.ptP.y, 4.9 / camZoom, 0, Math.PI*2); drawCtx.fill();
+
+                    // Telemetry & vectors via differentiation
+                    const step = 0.005; 
+                    const nextState = calcJointPositions(winningDesign, activeAngle + step);
+                    
+                    if (nextState) {
+                        let sysRPM = parseFloat(document.getElementById('slider-rpm').value);
+                        let w = 1.0 * sysRPM; 
+
+                        let vxB = (nextState.ptB.x - curState.ptB.x) / step;
+                        let vyB = (nextState.ptB.y - curState.ptB.y) / step;
+                        let vxA = (nextState.ptA.x - curState.ptA.x) / step;
+                        let vyA = (nextState.ptA.y - curState.ptA.y) / step;
+                        let vxP = (nextState.ptP.x - curState.ptP.x) / step;
+                        let vyP = (nextState.ptP.y - curState.ptP.y) / step;
+
+                        injectVectorArrow(curState.ptB.x, curState.ptB.y, vxB, vyB, "#f59e0b");
+                        injectVectorArrow(curState.ptA.x, curState.ptA.y, vxA, vyA, "#f59e0b");
+                        injectVectorArrow(curState.ptP.x, curState.ptP.y, vxP, vyP, "#f59e0b");
+
+                        let spdB = Math.hypot(vxB * w, vyB * w);
+                        let spdA = Math.hypot(vxA * w, vyA * w);
+                        let spdP = Math.hypot(vxP * w, vyP * w);
+
+                        document.getElementById('telemetry-readout').innerHTML = `
+                            <div class="kin-row">Crank (B): (${curState.ptB.x.toFixed(1)}, ${curState.ptB.y.toFixed(1)})<br><span class="v-data">↳ V: ${spdB.toFixed(1)} px/s</span></div>
+                            <div class="kin-row">Rocker (A): (${curState.ptA.x.toFixed(1)}, ${curState.ptA.y.toFixed(1)})<br><span class="v-data">↳ V: ${spdA.toFixed(1)} px/s</span></div>
+                            <div class="kin-row">Coupler (P): (${curState.ptP.x.toFixed(1)}, ${curState.ptP.y.toFixed(1)})<br><span class="v-data">↳ V: ${spdP.toFixed(1)} px/s</span></div>
+                        `;
+                    }
+                }
+            }
+            drawCtx.restore();
+        }
+        
+        // Input bindings
+        document.getElementById('slider-rpm').addEventListener('input', (e) => { 
+            document.getElementById('lbl-rpm').innerText = parseFloat(e.target.value).toFixed(1) + 'x';
+            if (winningDesign) updateDisplay(); 
+        });
+        
+        document.getElementById('slider-zoom').addEventListener('input', (e) => {
+            let nZoom = parseFloat(e.target.value);
+            camX = cvs.width/2 - (cvs.width/2 - camX) * (nZoom / camZoom); 
+            camY = cvs.height/2 - (cvs.height/2 - camY) * (nZoom / camZoom);
+            camZoom = nZoom; 
+            document.getElementById('lbl-zoom').innerText = Math.round(camZoom * 100) + '%'; 
+            updateDisplay();
+        });
+        
+        cvs.addEventListener('wheel', (e) => {
+            e.preventDefault(); 
+            let amt = e.deltaY > 0 ? 0.9 : 1.1; 
+            let nZoom = Math.max(0.01, Math.min(camZoom * amt, 4));
+            let bounds = cvs.getBoundingClientRect(); 
+            let mx = e.clientX - bounds.left, my = e.clientY - bounds.top;
+            
+            camX = mx - (mx - camX) * (nZoom / camZoom); 
+            camY = my - (my - camY) * (nZoom / camZoom);
+            camZoom = nZoom; 
+            
+            document.getElementById('slider-zoom').value = camZoom; 
+            document.getElementById('lbl-zoom').innerText = Math.round(camZoom * 100) + '%'; 
+            updateDisplay();
+        });
+        
+        cvs.addEventListener('mousedown', (e) => {
+            let bounds = cvs.getBoundingClientRect(); 
+            let mx = e.clientX - bounds.left, my = e.clientY - bounds.top;
+            
+            if (userPoints.length < requiredPoints) {
+                userPoints.push({ x: (mx - camX) / camZoom, y: (my - camY) / camZoom }); 
+                refreshDataBlocks();
+                if (userPoints.length === requiredPoints) { 
+                    document.getElementById('btn-calc').disabled = false; 
+                    triggerSolver(); 
+                } 
+                updateDisplay();
+            } else { 
+                dragActive = true; 
+                dragStartX = mx - camX; 
+                dragStartY = my - camY; 
+                cvs.style.cursor = 'grabbing'; 
+            }
+        });
+        
+        cvs.addEventListener('mousemove', (e) => { 
+            if (!dragActive) return; 
+            let bounds = cvs.getBoundingClientRect(); 
+            camX = (e.clientX - bounds.left) - dragStartX; 
+            camY = (e.clientY - bounds.top) - dragStartY; 
+            updateDisplay(); 
+        });
+        
+        const endPan = () => { dragActive = false; cvs.style.cursor = userPoints.length >= requiredPoints ? 'grab' : 'crosshair'; };
+        cvs.addEventListener('mouseup', endPan);
+        cvs.addEventListener('mouseleave', endPan);
+        
+        document.getElementById('btn-calc').onclick = () => { cvs.style.cursor = 'grab'; triggerSolver(); };
+        
+        document.getElementById('btn-play').onclick = function() { 
+            isSimRunning = !isSimRunning; 
+            this.innerHTML = isSimRunning ? "Pause" : "Animate"; 
+            if (isSimRunning) playbackTick(); 
+        };
+
+        // Export handlers
+        document.getElementById('btn-csv').onclick = () => {
+            if (!winningDesign) return;
+            const fixL = Math.hypot(winningDesign.g1.x - winningDesign.g2.x, winningDesign.g1.y - winningDesign.g2.y);
+            
+            let blobText = "Type,Name,X,Y,Length/Angle\n";
+            blobText += `Pivot,Ground Crank (HC),${winningDesign.g1.x.toFixed(4)},${winningDesign.g1.y.toFixed(4)},\n`;
+            blobText += `Pivot,Ground Rocker (HR),${winningDesign.g2.x.toFixed(4)},${winningDesign.g2.y.toFixed(4)},\n`;
+            blobText += `Pivot,Crank-Coupler (B0),${winningDesign.pB.x.toFixed(4)},${winningDesign.pB.y.toFixed(4)},\n`;
+            blobText += `Pivot,Coupler-Rocker (A0),${winningDesign.pA.x.toFixed(4)},${winningDesign.pA.y.toFixed(4)},\n`;
+            
+            blobText += `Link,Ground,,,${fixL.toFixed(4)}\n`;
+            blobText += `Link,Crank,,,${winningDesign.L_in.toFixed(4)}\n`;
+            blobText += `Link,Coupler,,,${winningDesign.L_float.toFixed(4)}\n`;
+            blobText += `Link,Rocker,,,${winningDesign.L_out.toFixed(4)}\n`;
+            
+            blobText += `Coupler,Distance to Target (rp),,,${winningDesign.extR.toFixed(4)}\n`;
+            blobText += `Coupler,Offset Angle (rad),,,${winningDesign.extAng.toFixed(4)}\n`;
+            
+            userPoints.forEach((t, idx) => { blobText += `Target,Point ${idx+1},${t.x.toFixed(4)},${t.y.toFixed(4)},\n`; });
+            
+            let vData = new Blob([blobText], { type: 'text/csv' });
+            let link = URL.createObjectURL(vData);
+            let dBtn = document.createElement('a');
+            dBtn.href = link;
+            dBtn.download = '4_5_bar_cad_export.csv';
+            document.body.appendChild(dBtn); dBtn.click(); document.body.removeChild(dBtn); URL.revokeObjectURL(link);
+        };
+
+        document.getElementById('btn-laser').onclick = () => {
+            if (!winningDesign) return;
+            
+            const padding = 12; 
+            const holeRadius = 2.5; 
+            
+            let oX = winningDesign.extR * Math.cos(winningDesign.extAng);
+            let oY = winningDesign.extR * Math.sin(winningDesign.extAng);
+            
+            let minX = Math.min(0, winningDesign.L_float, oX) - padding - 10;
+            let maxX = Math.max(0, winningDesign.L_float, oX) + padding + 10;
+            let minY = Math.min(0, oY) - padding - 10;
+            let maxY = Math.max(0, oY) + padding + 10;
+            
+            let boxW = maxX - minX;
+            let boxH = maxY - minY;
+            
+            const baseLen = Math.hypot(winningDesign.g1.x - winningDesign.g2.x, winningDesign.g1.y - winningDesign.g2.y);
+            
+            let canvasW = Math.max(winningDesign.L_in, winningDesign.L_out, baseLen, boxW) + (padding * 2) + 100;
+            let cursorY = 20 + padding; 
+            
+            let svgMarkup = "";
+            
+            const buildDogbone = (len, txt) => {
+                let s1 = 30 + padding, s2 = cursorY;
+                let e1 = 30 + padding + len, e2 = cursorY;
+                
+                let pLine = `M ${s1} ${s2 - padding} L ${e1} ${e2 - padding} A ${padding} ${padding} 0 0 1 ${e1} ${e2 + padding} L ${s1} ${s2 + padding} A ${padding} ${padding} 0 0 1 ${s1} ${s2 - padding} Z`;
+                
+                svgMarkup += `<path d="${pLine}" />`;
+                svgMarkup += `<circle cx="${s1}" cy="${s2}" r="${holeRadius}" />`;
+                svgMarkup += `<circle cx="${e1}" cy="${e2}" r="${holeRadius}" />`;
+                svgMarkup += `<text x="${s1 + len/2}" y="${cursorY + 4}" text-anchor="middle">${txt}</text>`;
+                
+                cursorY += (padding * 2) + 25; 
+            };
+            
+            buildDogbone(winningDesign.L_in, "Crank");
+            buildDogbone(winningDesign.L_out, "Rocker");
+            buildDogbone(baseLen, "Base");
+
+            let trX = 30 + padding - minX; 
+            let trY = cursorY - minY;
+            
+            let v1 = {x: trX, y: trY};
+            let v2 = {x: winningDesign.L_float + trX, y: trY};
+            let v3  = {x: oX + trX, y: oY + trY};
+            
+            // force clockwise winding for external padding calc
+            let cp = (v2.x - v1.x) * (v3.y - v1.y) - (v2.y - v1.y) * (v3.x - v1.x);
+            if (Math.abs(cp) < 1.0) { v3.y += 1.0; cp = (v2.x - v1.x) * (v3.y - v1.y) - (v2.y - v1.y) * (v3.x - v1.x); }
+            let arr = cp > 0 ? [v1, v2, v3] : [v1, v3, v2];
+            
+            let polyPath = "";
+            for(let i=0; i<3; i++) {
+                let pt1 = arr[i], pt2 = arr[(i+1)%3], pt3 = arr[(i+2)%3];
+                
+                let mx1 = pt2.x - pt1.x, my1 = pt2.y - pt1.y;
+                let rad1 = Math.hypot(mx1, my1);
+                let normX1 = my1 / rad1, normY1 = -mx1 / rad1; 
+                
+                let mx2 = pt3.x - pt2.x, my2 = pt3.y - pt2.y;
+                let rad2 = Math.hypot(mx2, my2);
+                let normX2 = my2 / rad2, normY2 = -mx2 / rad2; 
+                
+                let edge1X = pt1.x + normX1 * padding, edge1Y = pt1.y + normY1 * padding;
+                let edge2X = pt2.x + normX1 * padding, edge2Y = pt2.y + normY1 * padding;
+                
+                if(i === 0) polyPath += `M ${edge1X} ${edge1Y} `;
+                polyPath += `L ${edge2X} ${edge2Y} `;
+                
+                let rNextX = pt2.x + normX2 * padding, rNextY = pt2.y + normY2 * padding;
+                polyPath += `A ${padding} ${padding} 0 0 1 ${rNextX} ${rNextY} `;
+            }
+            polyPath += "Z";
+            
+            svgMarkup += `<path d="${polyPath}" />`;
+            svgMarkup += `<circle cx="${v1.x}" cy="${v1.y}" r="${holeRadius}" />`;
+            svgMarkup += `<circle cx="${v2.x}" cy="${v2.y}" r="${holeRadius}" />`;
+            svgMarkup += `<circle cx="${v3.x}" cy="${v3.y}" r="${holeRadius}" />`;
+            svgMarkup += `<text x="${(v1.x+v2.x+v3.x)/3}" y="${(v1.y+v2.y+v3.y)/3 + 4}" text-anchor="middle">Coupler</text>`;
+            
+            cursorY += boxH + 40; 
+            
+            let fileStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvasW} ${cursorY}">`;
+            fileStr += `<style>path { fill: none; stroke: #000; stroke-width: 1px; } circle { fill: none; stroke: #000; stroke-width: 1px; } text { font-family: sans-serif; font-size: 10px; fill: red; stroke: none; }</style>`;
+            fileStr += svgMarkup;
+            fileStr += `</svg>`;
+            
+            let finalBlob = new Blob([fileStr], { type: 'image/svg+xml' });
+            let docUrl = URL.createObjectURL(finalBlob);
+            let dlNode = document.createElement('a');
+            dlNode.href = docUrl;
+            dlNode.download = '4_5_bar_laser_cut.svg';
+            document.body.appendChild(dlNode); dlNode.click(); document.body.removeChild(dlNode); URL.revokeObjectURL(docUrl);
+        };
+
+        function playbackTick() { 
+            if (!isSimRunning) return; 
+            let rate = parseFloat(document.getElementById('slider-rpm').value);
+            let nextA = activeAngle + (0.05 * rate * rotationDir); 
+            if (!calcJointPositions(winningDesign, nextA)) rotationDir *= -1; else activeAngle = nextA; 
+            updateDisplay(); requestAnimationFrame(playbackTick); 
+        }
+        
+        document.getElementById('btn-clear').onclick = () => location.reload(); 
+        
+        refreshDataBlocks(); renderBackgroundGrid();
+    </script>
+</body>
+</html>
