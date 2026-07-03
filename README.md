@@ -5,7 +5,8 @@ A high-performance computation engine designed to solve complex 4-bar linkage sy
 ---
 
 ## 📸 Interface Preview
-![Project Web Interface](<img width="1826" height="853" alt="image" src="https://github.com/user-attachments/assets/4cad1495-df9d-4e40-984d-c56856114a9d" />
+![Project Web Interface](<<img width="1825" height="847" alt="image" src="https://github.com/user-attachments/assets/e0025b0a-8460-4034-94a0-6618cf2f5a4f" />
+>
 )
 
 ## 🌐 Live Demo
@@ -30,14 +31,3 @@ You can view the rendered interface of this synthesizer here:
 * **Data Processing:** `Pandas`
 
 ---
-
-## 📁 Repository Structure
-
-```text
-4-Bar-Synthesizer/
-│
-├── image_4930c0.png        # Project interface preview
-├── src/                    # Optimization engine and background workers
-├── data/                   # Processed coordinate arrays
-├── requirements.txt        # Project dependencies
-└── README.md               # Project documentation
